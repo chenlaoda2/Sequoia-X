@@ -1,0 +1,44 @@
+name: Daily Run
+
+on:
+  schedule:
+    - cron: "15 11 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: sequoia-x-daily-run
+  cancel-in-progress: false
+
+jobs:
+  run-daily:
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -e .
+
+      - name: Create .env
+        run: |
+          cat > .env <<'EOF'
+          DB_PATH=data/sequoia_v2.db
+          START_DATE=2024-01-01
+          FEISHU_WEBHOOK_URL=${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_SIGN_SECRET=${{ secrets.FEISHU_SIGN_SECRET }}
+          EOF
+
+      - name: Run daily selection
+        run: |
+          . .venv/bin/activate
+          python main.py

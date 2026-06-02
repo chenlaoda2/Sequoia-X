@@ -79,6 +79,31 @@ python main.py
 15 19 * * 1-5 cd /root/Sequoia-X && .venv/bin/python main.py >> log.txt 2>&1
 ```
 
+### 5. GitHub 托管与自动运行
+
+仓库可直接托管到 GitHub。若要使用 GitHub Actions 定时运行，请优先使用
+`self-hosted runner`，因为项目依赖本地 SQLite 数据库持久化，普通 GitHub Hosted
+Runner 每次任务都是全新环境，不会保留 `data/sequoia_v2.db`。
+
+项目已提供工作流文件：
+
+```text
+.github/workflows/daily-run.yml
+```
+
+默认计划任务为北京时间工作日 `19:15`，对应 GitHub Actions 的 UTC cron：
+
+```text
+15 11 * * 1-5
+```
+
+在 GitHub 仓库中请配置以下 `Actions Secrets`：
+
+- `FEISHU_WEBHOOK_URL`
+- `FEISHU_SIGN_SECRET`
+
+如果你使用本机定时任务，建议直接沿用本地 `.env` 和 `.venv`，避免重复安装依赖。
+
 ---
 
 ## 目录结构 | Project Structure

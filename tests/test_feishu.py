@@ -33,9 +33,10 @@ def test_notification_contains_all_symbols(symbols: list[str]) -> None:
     settings = make_settings()
     notifier = FeishuNotifier(settings)
 
-    with patch("requests.post") as mock_post:
-        mock_post.return_value = MagicMock(status_code=200)
-        notifier.send(symbols=symbols, strategy_name="TestStrategy")
+    with patch.object(FeishuNotifier, "_get_stock_names", return_value={}):
+        with patch("requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=200, json=lambda: {"code": 0})
+            notifier.send(symbols=symbols, strategy_name="TestStrategy")
 
     call_args = mock_post.call_args
     body = json.loads(call_args.kwargs.get("data") or call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs["data"])
@@ -54,9 +55,10 @@ def test_notification_uses_config_url(webhook_url: str) -> None:
     settings = make_settings(webhook_url=webhook_url)
     notifier = FeishuNotifier(settings)
 
-    with patch("requests.post") as mock_post:
-        mock_post.return_value = MagicMock(status_code=200)
-        notifier.send(symbols=["000001"], strategy_name="Test", webhook_key="default")
+    with patch.object(FeishuNotifier, "_get_stock_names", return_value={}):
+        with patch("requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=200, json=lambda: {"code": 0})
+            notifier.send(symbols=["000001"], strategy_name="Test", webhook_key="default")
 
     called_url = mock_post.call_args.args[0] if mock_post.call_args.args else mock_post.call_args.kwargs.get("url")
     assert called_url == webhook_url
@@ -84,10 +86,35 @@ def test_http_failure_logs_error(status_code: int) -> None:
     handler = _ListHandler(_logging.ERROR)
     feishu_logger.addHandler(handler)
     try:
-        with patch("requests.post") as mock_post:
-            mock_post.return_value = MagicMock(status_code=status_code, text="error")
-            notifier.send(symbols=["000001"], strategy_name="Test")
+        with patch.object(FeishuNotifier, "_get_stock_names", return_value={}):
+            with patch("requests.post") as mock_post:
+                mock_post.return_value = MagicMock(
+                    status_code=status_code,
+                    text="error",
+                    json=lambda: {"code": 99991},
+                )
+                notifier.send(symbols=["000001"], strategy_name="Test")
     finally:
         feishu_logger.removeHandler(handler)
 
     assert any(r.levelno == _logging.ERROR for r in log_records)
+
+
+def test_signature_fields_are_added_when_secret_is_configured() -> None:
+    """配置签名密钥后，请求体应包含 timestamp 和 sign。"""
+    settings = Settings(
+        db_path="data/test.db",
+        start_date="2024-01-01",
+        feishu_webhook_url="https://example.com/default",
+        feishu_sign_secret="test-secret",
+    )
+    notifier = FeishuNotifier(settings)
+
+    with patch.object(FeishuNotifier, "_get_stock_names", return_value={}):
+        with patch("requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=200, json=lambda: {"code": 0})
+            notifier.send(symbols=["000001"], strategy_name="Test")
+
+    body = json.loads(mock_post.call_args.kwargs["data"])
+    assert "timestamp" in body
+    assert "sign" in body

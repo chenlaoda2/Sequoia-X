@@ -1,6 +1,10 @@
 """飞书通知模块：将选股结果通过 Webhook 推送至飞书群。"""
 
+import base64
+import hashlib
+import hmac
 import json
+import time
 from datetime import date
 
 import requests
@@ -94,6 +98,23 @@ class FeishuNotifier:
             },
         }
 
+    def _attach_signature(self, payload: dict) -> dict:
+        """当配置了签名密钥时，为飞书消息附加 timestamp 和 sign。"""
+        secret = self.settings.feishu_sign_secret
+        if not secret:
+            return payload
+
+        timestamp = str(int(time.time()))
+        string_to_sign = f"{timestamp}\n{secret}".encode("utf-8")
+        sign = base64.b64encode(
+            hmac.new(string_to_sign, digestmod=hashlib.sha256).digest()
+        ).decode("utf-8")
+
+        signed_payload = dict(payload)
+        signed_payload["timestamp"] = timestamp
+        signed_payload["sign"] = sign
+        return signed_payload
+
     def send(
         self,
         symbols: list[str],
@@ -115,7 +136,7 @@ class FeishuNotifier:
             不抛出异常，HTTP 失败时记录 ERROR 日志。
         """
         url = self.settings.get_webhook_url(webhook_key)
-        payload = self._build_card(symbols, strategy_name)
+        payload = self._attach_signature(self._build_card(symbols, strategy_name))
 
         try:
             resp = requests.post(
